@@ -1,0 +1,15 @@
+version: "3.3"
+
+services:
+
+  user_api:
+
+    build:  .
+
+    ports:
+      - "5050:5050"
+    
+    command:  python3 user.py
+
+    volumes:
+      -./:/app
