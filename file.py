@@ -4,10 +4,11 @@ app = Quart(__name__)
 
 @app.route('/file')
 
-async def get_user_document_list(uid):
-    return jsonify("get_user_document_list")
+async def file(uid):
+    response = {"message": "Hola Mundo"}
+    return jsonify(response)
 
-@app.route('/file')
+"""@app.route('/file')
 
 async def put_user_document(uid, filename):
     return jsonify("put_user_document")
@@ -26,6 +27,6 @@ async def delete_user_document(uid, filename):
 
 async def public_user_document(uid, filename, public):
     return jsonify("public_use_document")
-
+"""
 if __name__ == '__main__':
     app.run(host='localhost', port=5050)
