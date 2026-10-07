@@ -44,9 +44,6 @@ def guardar_usuarios(usuarios):
     with USERS_FILE.open("w", encoding="utf-8") as fichero:
         json.dump(usuarios, fichero)
 
-    USERS_FILE.replace(USERS_FILE)
-
-
 def hash_password(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
