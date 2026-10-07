@@ -4,6 +4,7 @@ import requests
 
 
 URL_USER = "http://127.0.0.1:5050/user"
+URL_FILE = "http://127.0.0.1:5051/file"
 resultados = []
 
 
@@ -12,6 +13,12 @@ def peticion(metodo, datos=None, token=None):
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
     return requests.request(metodo, URL_USER, json=datos, headers=headers, timeout=5)
+
+def peticion_file(metodo, datos=None, token=None):
+    headers = {}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+        return requests.request(metodo, URL_FILE, json=datos, headers=headers, timeout=5)
 
 
 def leer_json(respuesta):
@@ -89,6 +96,8 @@ def probar_usuarios():
     comprobar("Login con contraseña nueva", respuesta, 200,
               datos.get("uid") == uid and datos.get("token") == token)
 
+def probar_files():
+    return None
 
 def main():
     print("--- PRUEBAS DE USUARIOS ---")
