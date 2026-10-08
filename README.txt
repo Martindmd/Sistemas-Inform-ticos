@@ -27,3 +27,6 @@ Y en otra terminal, con el entorno activado:
 python cliente.py
 
 Para pararlo: Ctrl+C y docker compose down
+
+Si falla por favor comprobad que la version de python del ordenador del laboratorio sea la misma que pone en Dockerfile, 
+ya que nos ha dado algunos problemas mientras comprobabamos en los ordenadores del laboratorio. 

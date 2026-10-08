@@ -1,6 +1,6 @@
 # Definimos la imagen base de python
 
-FROM python:3.12
+FROM python:3.13.9
 
 # Establecemos el directorio de trabajo del contenedor
 
