@@ -13,7 +13,8 @@ services:
 
     command: python3 user.py
 
-    volumes: -./:/app
+    volumes:
+      - ./:/app
 
   file_api:
 
@@ -26,4 +27,5 @@ services:
 
     command: python3 file.py
 
-    volumes: -./:/app
+    volumes:
+      - ./:/app
