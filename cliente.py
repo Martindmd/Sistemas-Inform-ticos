@@ -1,11 +1,17 @@
 import uuid
 
+
 import requests
 
 
-URL_USER = "http://127.0.0.1:5050/user"
-URL_FILE = "http://127.0.0.1:5051/file"
-resultados = []
+
+
+URL_USER = "http://localhost:5050/user"
+URL_FILE = "http://localhost:5051/file"
+resultados_usr = []
+resultados_file = []
+
+
 
 
 def peticion(metodo, datos=None, token=None):
@@ -14,11 +20,13 @@ def peticion(metodo, datos=None, token=None):
         headers["Authorization"] = f"Bearer {token}"
     return requests.request(metodo, URL_USER, json=datos, headers=headers, timeout=5)
 
-def peticion_file(metodo, datos=None, token=None):
+
+def peticion_file(metodo, url, datos=None, token=None):
     headers = {}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
-        return requests.request(metodo, URL_FILE, json=datos, headers=headers, timeout=5)
+    print (URL_FILE + url)
+    return requests.request(metodo, URL_FILE + url, json=datos, headers=headers, timeout=5)
 
 
 def leer_json(respuesta):
@@ -29,9 +37,10 @@ def leer_json(respuesta):
         return {}
 
 
+
+
 def comprobar(nombre, respuesta, esperado, condicion=True):
     correcto = respuesta.status_code == esperado and condicion
-    resultados.append(correcto)
     estado = "OK" if correcto else "FALLO"
     print(f"[{estado}] {nombre} (HTTP {respuesta.status_code}, esperado {esperado})")
     if not correcto:
@@ -39,66 +48,125 @@ def comprobar(nombre, respuesta, esperado, condicion=True):
     return correcto
 
 
+
+
 def probar_usuarios():
     nombre = f"prueba_{uuid.uuid4().hex[:10]}"
     password = "1234"
     nueva_password = "5678"
 
+
     respuesta = peticion("PUT", {"name": nombre, "password": password})
     datos = leer_json(respuesta)
     uid, token = datos.get("uid"), datos.get("token")
-    if not comprobar("Crear usuario", respuesta, 201, bool(uid and token)):
+    correcto = comprobar("Crear usuario", respuesta, 201, bool(uid and token))
+    if not correcto:
         return
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("PUT", {"name": nombre, "password": password})
-    comprobar("Usuario duplicado", respuesta, 409)
+    correcto = comprobar("Usuario duplicado", respuesta, 409)
+    resultados_usr.append(correcto)
+
+
+
 
     respuesta = peticion("PUT", {"name": nombre})
-    comprobar("Registro sin contraseña", respuesta, 400)
+    correcto = comprobar("Registro sin contraseña", respuesta, 400)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("PUT", {"name": " ", "password": password})
-    comprobar("Registro con nombre vacío", respuesta, 400)
+    correcto = comprobar("Registro con nombre vacío", respuesta, 400)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("PUT", {"name": 123, "password": password})
-    comprobar("Registro con nombre incorrecto", respuesta, 400)
+    correcto = comprobar("Registro con nombre incorrecto", respuesta, 400)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("POST", {"name": nombre, "password": password})
     datos = leer_json(respuesta)
-    comprobar("Login correcto", respuesta, 200,
+    correcto =comprobar("Login correcto", respuesta, 200,
               datos.get("uid") == uid and datos.get("token") == token)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("POST", {"name": nombre, "password": "incorrecta"})
-    comprobar("Login con contraseña incorrecta", respuesta, 401)
+    correcto = comprobar("Login con contraseña incorrecta", respuesta, 401)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("POST", {"name": f"{nombre}_no_existe", "password": password})
-    comprobar("Login con usuario inexistente", respuesta, 401)
+    correcto = comprobar("Login con usuario inexistente", respuesta, 401)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("POST", {"name": nombre})
-    comprobar("Login sin contraseña", respuesta, 400)
+    correcto = comprobar("Login sin contraseña", respuesta, 400)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("PATCH", {"password": nueva_password})
-    comprobar("Cambio de contraseña sin token", respuesta, 401)
+    correcto =comprobar("Cambio de contraseña sin token", respuesta, 401)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("PATCH", {"password": nueva_password}, "token_falso")
-    comprobar("Cambio de contraseña con token falso", respuesta, 401)
+    correcto = comprobar("Cambio de contraseña con token falso", respuesta, 401)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("PATCH", {}, token)
-    comprobar("Cambio sin nueva contraseña", respuesta, 400)
+    correcto = comprobar("Cambio sin nueva contraseña", respuesta, 400)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("PATCH", {"password": nueva_password}, token)
-    comprobar("Cambiar contraseña", respuesta, 200)
+    correcto = comprobar("Cambiar contraseña", respuesta, 200)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("POST", {"name": nombre, "password": password})
-    comprobar("Login con contraseña anterior", respuesta, 401)
+    correcto = comprobar("Login con contraseña anterior", respuesta, 401)
+    resultados_usr.append(correcto)
+
 
     respuesta = peticion("POST", {"name": nombre, "password": nueva_password})
     datos = leer_json(respuesta)
-    comprobar("Login con contraseña nueva", respuesta, 200,
+    correcto = comprobar("Login con contraseña nueva", respuesta, 200,
               datos.get("uid") == uid and datos.get("token") == token)
+    resultados_usr.append(correcto)
+
 
 def probar_files():
-    return None
+    usr_uid = "/4d9d97a1-d8a5-4232-a62a-7174cbc87cc8"
+    respuesta = peticion_file("GET", usr_uid, None, None)
+    correcto = comprobar("Listar directorios", respuesta, 200)
+    resultados_file.append(correcto)
 
+
+    str = "abababab"
+    respuesta = peticion_file("PUT", usr_uid +  "/test.txt", {"text": str})
+    correcto = comprobar("Reescritura de fichero", respuesta, 200)
+    resultados_file.append(correcto)
+
+
+    respuesta = peticion_file("GET", usr_uid + "/test.txt")
+    correcto = comprobar("Conseguir info de fichero", respuesta, 200)
+    resultados_file.append(correcto)
+
+
+    respuesta = peticion_file("PATCH", usr_uid + "/test.txt")
+    correcto = comprobar("Cambiar privacidad ", respuesta, 200)
+    resultados_file.append(correcto)
+
+
+    respuesta = peticion_file("DELETE", usr_uid + "/test.txt")
+    correcto = comprobar("Borrar fichero", respuesta, 200)
+    resultados_file.append(correcto)
 def main():
     print("--- PRUEBAS DE USUARIOS ---")
     try:
@@ -107,12 +175,30 @@ def main():
         print(f"Error de conexión: {error}")
         print("Comprueba que user.py está ejecutándose en el puerto 5050.")
 
-    correctas = sum(resultados)
-    total = len(resultados)
-    print(f"\nResultado: {correctas}/{total} pruebas superadas")
-    if total < 15:
-        print(f"AVISO: No se pudieron completar las 15 pruebas (ejecutadas: {total}).")
+
+    correctas_usr = sum(resultados_usr)
+    total_usr = len(resultados_usr)
+    print(f"\nResultado: {correctas_usr}/{total_usr} pruebas superadas")
+    if total_usr < 15:
+        print(f"AVISO: No se pudieron completar las 15 pruebas (ejecutadas: {total_usr}).")
 
 
-if __name__ == "__main__":
+    print("--- PRUEBAS DE FILES ---")
+    try:
+        probar_files()
+    except requests.RequestException as error:
+        print(f"Error de conexión: {error}")
+
+
+    print(resultados_file)
+    correctas_file = sum(resultados_file)
+    total_file = len(resultados_file)
+    print(f"\nResultado: {correctas_file}/{total_file} pruebas superadas")
+    if total_file < 5:
+        print(f"AVISO: No se pudieron completar las 5 pruebas (ejecutadas: {total_file}).")
+
+
+
+
+if _name_ == "_main_":
     main()

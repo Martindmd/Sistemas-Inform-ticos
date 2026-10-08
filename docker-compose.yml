@@ -4,12 +4,26 @@ services:
 
   user_api:
 
-    build:  .
+    build:
+      context: .
+      network: host
 
     ports:
       - "5050:5050"
-    
-    command:  python3 user.py
 
-    volumes:
-      -./:/app
+    command: python3 user.py
+
+    volumes: -./:/app
+
+  file_api:
+
+    build:
+      context: .
+      network: host
+
+    ports:
+      - "5051:5051"
+
+    command: python3 file.py
+
+    volumes: -./:/app
