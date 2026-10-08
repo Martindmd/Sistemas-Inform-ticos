@@ -1,11 +1,7 @@
 from quart import Quart, jsonify, request
 
-
 from pathlib import Path
 import uuid
-
-
-
 
 
 
@@ -13,7 +9,6 @@ app = Quart(_name_)
 
 
 ################ FUNCIONES AUXILIARES ###############
-
 
 def autorizar_vista(uid, status, msg):
     return 1
@@ -28,7 +23,6 @@ def autorizar_vista(uid, status, msg):
     else:
          return 1"""
 
-
 ################ FUNCIONES PRINCIPALES #################
 
 
@@ -41,7 +35,7 @@ async def get_user_document_list(uid):
     dirs_list = []
     if autorizar_vista(uid, status, msg) == -1:
         response = {"message": msg}
-        return jsonify(response), status
+        return jsonify(response), status 
     path = Path("./file/" + str(uid))
     try:
         for path in list(path.iterdir()):
@@ -52,8 +46,7 @@ async def get_user_document_list(uid):
         msg = "Error, Directorio no encontrado"
         status = 404
     response = {"message": msg}
-    return jsonify(response), status
-
+    return jsonify(response), status 
 
 @app.route('/file/<uid>/<filename>', methods=["PUT"])
 
@@ -63,7 +56,7 @@ async def put_user_document(uid, filename):
     msg = ""
     if autorizar_vista(uid, status, msg) == -1:
         response = {"message": msg}
-        return jsonify(response), status
+        return jsonify(response), status 
     entrada = await request.get_json()
     new_file = entrada["text"]
     path = Path("./file/" + str(uid) + "/" + filename)
@@ -76,8 +69,7 @@ async def put_user_document(uid, filename):
         msg = "Error, Directorio no encontrado"
         status = 404
     response = {"message": msg}
-    return jsonify(response), status
-
+    return jsonify(response), status 
 
 @app.route('/file/<uid>/<filename>', methods=["GET"])
 
@@ -87,7 +79,7 @@ async def get_user_document(uid, filename):
     msg = ""
     if autorizar_vista(uid, status, msg) == -1:
         response = {"message": msg}
-        return jsonify(response), status
+        return jsonify(response), status 
     path = Path('./file/' + str(uid) + "/" + str(filename))
     try:
         with open(path,'r') as file:
@@ -97,8 +89,7 @@ async def get_user_document(uid, filename):
         msg = "Error, Directorio no encontrado"
         status = 404
     response = {"message": msg}
-    return jsonify(response), status
-
+    return jsonify(response), status 
 
 @app.route('/file/<uid>/<filename>',methods=["DELETE"])
 
@@ -108,7 +99,7 @@ async def delete_user_document(uid, filename):
     msg = ""
     if autorizar_vista(uid, status, msg) == -1:
         response = {"message": msg}
-        return jsonify(response), status
+        return jsonify(response), status 
     path = Path('./file/' + str(uid) + "/" + str(filename))
     try:
         Path.unlink(path)
@@ -120,7 +111,6 @@ async def delete_user_document(uid, filename):
     response = {"message": msg}
     return jsonify(response), status
 
-
 @app.route('/file/<uid>/<filename>', methods=["PATCH"])
 
 
@@ -129,7 +119,7 @@ async def public_user_document(uid, filename, public):
     msg = ""
     if autorizar_vista(uid, status, msg) == -1:
         response = {"message": msg}
-        return jsonify(response), status
+        return jsonify(response), status 
     path = Path('./file/' + str(uid) + "/" + str(filename))
     try:
             msg = "Estado de privacidad de archivo modificado con exito"
@@ -140,8 +130,7 @@ async def public_user_document(uid, filename, public):
     response = {"message": msg}
     return jsonify(response), status
 
-
-if _name_ == '_main_':
+if __name__ == '__main__':
     path = Path("shared/secret_uuid.txt")
     try:
          with open(path, 'r') as file:
