@@ -1,0 +1,31 @@
+version: "3.3"
+
+services:
+
+  user_api:
+
+    build:
+      context: .
+      network: host
+
+    ports:
+      - "5050:5050"
+
+    command: python3 user.py
+
+    volumes:
+      - ./:/app
+
+  api:
+
+    build:
+      context: .
+      network: host
+
+    ports:
+      - "5051:5051"
+
+    command: python3 api.py
+
+    volumes:
+      - ./:/app
