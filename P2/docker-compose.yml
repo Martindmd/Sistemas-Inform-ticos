@@ -1,9 +1,8 @@
-version: "3.3"
+
 
 services:
 
   user_api:
-
     build:
       context: .
       network: host
@@ -16,8 +15,11 @@ services:
     volumes:
       - ./:/app
 
-  api:
+    depends_on:
+      db:
+        condition: service_healthy
 
+  api:
     build:
       context: .
       network: host
@@ -29,3 +31,32 @@ services:
 
     volumes:
       - ./:/app
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17
+
+    environment:
+      POSTGRES_USER: alumnodb
+      POSTGRES_PASSWORD: "1234"
+      POSTGRES_DB: si1
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./populate.sql:/docker-entrypoint-initdb.d/02-populate.sql:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alumnodb -d si1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
