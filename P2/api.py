@@ -55,9 +55,22 @@ async def usuario_del_token(conn):
 
 async def get_peliculas():
     # Filtros opcionales: /peliculas?genero=anime&director=nolan&actor=caine
+    # Si un filtro no viene llega como NULL y esa condición no filtra nada
+    # CAST indica a Postgres el tipo del parámetro, que no puede deducir de un "IS NULL"
     async with engine.connect() as conn:
         resultado = await conn.execute(
-            text("SELECT * FROM buscar_peliculas(:genero, :director, :actor)"),
+            text("SELECT p.id, p.titulo, p.anio, p.genero, p.precio, p.stock, d.nombre AS director "
+                 "FROM Pelicula p "
+                 "JOIN Director d ON d.id = p.director_id "
+                 "WHERE p.activa "
+                 # ILIKE para que no distinga mayúsculas y minúsculas
+                 "AND (CAST(:genero AS VARCHAR) IS NULL OR p.genero ILIKE :genero) "
+                 # ILIKE con comodines (%) para buscar coincidencias parciales
+                 "AND (CAST(:director AS VARCHAR) IS NULL OR d.nombre ILIKE '%' || :director || '%') "
+                 "AND (CAST(:actor AS VARCHAR) IS NULL OR EXISTS ("
+                 "     SELECT 1 FROM PeliculaActor pa JOIN Actor a ON a.id = pa.actor_id "
+                 "     WHERE pa.pelicula_id = p.id AND a.nombre ILIKE '%' || :actor || '%')) "
+                 "ORDER BY p.titulo"),
             {"genero": request.args.get("genero"),
              "director": request.args.get("director"),
              "actor": request.args.get("actor")}
@@ -256,13 +269,21 @@ async def pagar_carrito():
             if uid is None:
                 response = {"error": "Acceso no autorizado"}
                 return jsonify(response), 401
-            # El procedimiento guarda la fecha de pago; el trigger descuenta el saldo
-            await conn.execute(text("CALL pagar_carrito(:uid)"), {"uid": uid})
+            # Se guarda la fecha de pago; el trigger actualizar_saldo descuenta el total del saldo
+            resultado = await conn.execute(
+                text("UPDATE Pedido SET estado = 'pagado', fecha_pago = NOW() "
+                     "WHERE usuario_id = :uid AND estado = 'pendiente'"),
+                {"uid": uid}
+            )
     except DBAPIError as error:
         if "Saldo insuficiente" in str(error):
             response = {"error": "Saldo insuficiente"}
             return jsonify(response), 409
-        # El usuario no tiene carrito o lo ha dejado vacío
+        # El trigger no deja pagar un carrito que se ha quedado vacío
+        response = {"error": "El carrito está vacío"}
+        return jsonify(response), 400
+    if resultado.rowcount == 0:
+        # El usuario no tiene carrito
         response = {"error": "El carrito está vacío"}
         return jsonify(response), 400
     response = {"message": "Carrito pagado con exito"}

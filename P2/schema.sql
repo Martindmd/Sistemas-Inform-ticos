@@ -262,30 +262,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- Listado de películas del catálogo filtrando por género, director y/o actor (NULL = sin filtro)
-CREATE FUNCTION buscar_peliculas(p_genero VARCHAR, p_director VARCHAR, p_actor VARCHAR)
-RETURNS TABLE (id INTEGER, titulo VARCHAR, anio INTEGER, genero VARCHAR,
-               precio NUMERIC, stock INTEGER, director VARCHAR) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT p.id, p.titulo, p.anio, p.genero, p.precio, p.stock, d.nombre
-    FROM Pelicula p
-    JOIN Director d ON d.id = p.director_id
-    WHERE p.activa
-      AND (p_genero IS NULL OR p.genero ILIKE p_genero) -- ILIKE para que sea case-insensitive
-      AND (p_director IS NULL OR d.nombre ILIKE '%' || p_director || '%') -- ILIKE con comodines para buscar coincidencias parciales
-      AND (p_actor IS NULL OR EXISTS (
-            SELECT 1
-            FROM PeliculaActor pa
-            JOIN Actor a ON a.id = pa.actor_id
-            WHERE pa.pelicula_id = p.id
-              AND a.nombre ILIKE '%' || p_actor || '%'
-          ))
-    ORDER BY p.titulo;
-END;
-$$ LANGUAGE plpgsql;
-
-
 -- Añadir unidades de una película al carrito del usuario (si no tiene carrito se le crea)
 CREATE PROCEDURE anadir_al_carrito(p_usuario INTEGER, p_pelicula INTEGER, p_cantidad INTEGER)
 AS $$
@@ -318,22 +294,6 @@ BEGIN
     VALUES (v_pedido, p_pelicula, p_cantidad, v_precio)
     ON CONFLICT (pedido_id, pelicula_id)
     DO UPDATE SET cantidad = PedidoPelicula.cantidad + EXCLUDED.cantidad;
-END;
-$$ LANGUAGE plpgsql;
-
-
--- Pagar el carrito del usuario guardando la fecha de pago
--- El trigger actualizar_saldo descuenta el total del saldo
-CREATE PROCEDURE pagar_carrito(p_usuario INTEGER)
-AS $$
-BEGIN
-    UPDATE Pedido
-    SET estado = 'pagado', fecha_pago = NOW()
-    WHERE usuario_id = p_usuario AND estado = 'pendiente';
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'El usuario no tiene carrito';
-    END IF;
 END;
 $$ LANGUAGE plpgsql;
 
