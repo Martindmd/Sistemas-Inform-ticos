@@ -1,16 +1,22 @@
 import hashlib
-import json
+import os
 import uuid
 from pathlib import Path
 
 from quart import Quart, jsonify, request
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import create_async_engine
 
 
 app = Quart(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
-USERS_FILE = BASE_DIR / "user_data" / "users.json"
 SECRET_FILE = BASE_DIR / "shared" / "secret_uuid.txt"
+
+# En Docker la URL llega por la variable de entorno; en local se usa la base de datos expuesta en localhost
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql+asyncpg://alumnodb:1234@localhost:5432/si1")
+engine = create_async_engine(DATABASE_URL, echo=False)
 
 
 # Cargar o generar un UUID secreto para la aplicación
@@ -28,29 +34,15 @@ def cargar_secreto():
 SECRET_UUID = cargar_secreto()
 
 
-# Funciones auxiliares para manejar autenticacion, usuarios y su persistencia en ficheros
-# Cambiar el acceso a ficheros por a la Base de Datos
-def cargar_usuarios():
-    if not USERS_FILE.exists():
-        return {}
-
-    with USERS_FILE.open("r", encoding="utf-8") as fichero:
-        return json.load(fichero)
-
-
-def guardar_usuarios(usuarios):
-    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    
-
-    with USERS_FILE.open("w", encoding="utf-8") as fichero:
-        json.dump(usuarios, fichero)
+# Funciones auxiliares para manejar autenticacion y usuarios
 
 def hash_password(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
-def generar_token(uid):
-    return str(uuid.uuid5(SECRET_UUID, uid))
+# El token es "<uid>.<uuid5 del secreto con uid y sesion>": al cambiar la sesion (logout) cambia el token
+def generar_token(uid, sesion):
+    return f"{uid}.{uuid.uuid5(SECRET_UUID, f'{uid}.{sesion}')}"
 
 
 def credenciales_validas(datos):
@@ -63,40 +55,49 @@ def credenciales_validas(datos):
     )
 
 
-def usuario_del_token(usuarios, cabecera):
-    if not cabecera.startswith("Bearer "):
+# Devuelve el id del usuario dueño del token, o None si el token no es válido
+async def usuario_del_token(conn, cabecera):
+    if cabecera is None or not cabecera.startswith("Bearer "):
         return None
 
     token = cabecera[len("Bearer "):].strip()
+    uid = token.split(".")[0]
+    if not uid.isdigit():
+        return None
 
-    for nombre, datos in usuarios.items():
-        if generar_token(datos["uid"]) == token:
-            return nombre
+    resultado = await conn.execute(
+        text("SELECT sesion FROM Usuario WHERE id = :id"),
+        {"id": int(uid)}
+    )
+    fila = resultado.first()
 
-    return None
+    if fila is None or generar_token(uid, fila.sesion) != token:
+        return None
+
+    return int(uid)
 
 
-# Funciones de la API para crear, iniciar sesión y modificar usuarios 
+# Funciones de la API para crear, iniciar sesión y modificar usuarios
 
 @app.put("/user")
 async def create_user():
     datos = await request.get_json(silent=True)
 
-    if not credenciales_validas(datos):
-        return jsonify({"error": "Nombre o contraseña no válidos"}), 400
+    if not credenciales_validas(datos) or not isinstance(datos.get("pais"), str) or not datos["pais"].strip():
+        return jsonify({"error": "Nombre, contraseña o país no válidos"}), 400
 
-    nombre = datos["name"]
-    password = datos["password"]
-    usuarios = cargar_usuarios()
-
-    if nombre in usuarios:
+    try:
+        async with engine.begin() as conn:
+            resultado = await conn.execute(
+                text("INSERT INTO Usuario (nombre, password_hash, pais) "
+                     "VALUES (:nombre, :password_hash, :pais) RETURNING id, sesion"),
+                {"nombre": datos["name"], "password_hash": hash_password(datos["password"]), "pais": datos["pais"]}
+            )
+            fila = resultado.first()
+    except IntegrityError:
         return jsonify({"error": "El usuario ya existe"}), 409
 
-    uid = str(uuid.uuid4())
-    usuarios[nombre] = {"uid": uid, "password_hash": hash_password(password)}
-    guardar_usuarios(usuarios)
-
-    return jsonify({"uid": uid, "token": generar_token(uid)}), 201
+    return jsonify({"uid": fila.id, "token": generar_token(fila.id, fila.sesion)}), 201
 
 
 @app.post("/user")
@@ -106,14 +107,34 @@ async def login():
     if not credenciales_validas(datos):
         return jsonify({"error": "Nombre o contraseña no válidos"}), 400
 
-    usuarios = cargar_usuarios()
-    usuario = usuarios.get(datos["name"])
+    async with engine.connect() as conn:
+        resultado = await conn.execute(
+            text("SELECT id, password_hash, sesion FROM Usuario WHERE nombre = :nombre"),
+            {"nombre": datos["name"]}
+        )
+        usuario = resultado.first()
 
-    if usuario is None or usuario["password_hash"] != hash_password(datos["password"]):
+    if usuario is None or usuario.password_hash != hash_password(datos["password"]):
         return jsonify({"error": "Credenciales incorrectas"}), 401
 
-    uid = usuario["uid"]
-    return jsonify({"uid": uid, "token": generar_token(uid)}), 200
+    return jsonify({"uid": usuario.id, "token": generar_token(usuario.id, usuario.sesion)}), 200
+
+
+@app.post("/user/logout")
+async def logout():
+    async with engine.begin() as conn:
+        uid = await usuario_del_token(conn, request.headers.get("Authorization"))
+
+        if uid is None:
+            return jsonify({"error": "Token inválido o ausente"}), 401
+
+        # Al cambiar la sesion el token anterior deja de ser válido
+        await conn.execute(
+            text("UPDATE Usuario SET sesion = sesion + 1 WHERE id = :id"),
+            {"id": uid}
+        )
+
+    return jsonify({"message": "Sesión cerrada"}), 200
 
 
 @app.patch("/user")
@@ -123,16 +144,54 @@ async def modify_user():
     if not isinstance(datos, dict) or not isinstance(datos.get("password"), str) or not datos["password"]:
         return jsonify({"error": "Contraseña no válida"}), 400
 
-    usuarios = cargar_usuarios()
-    nombre = usuario_del_token(usuarios, request.headers.get("Authorization", ""))
+    async with engine.begin() as conn:
+        uid = await usuario_del_token(conn, request.headers.get("Authorization"))
 
-    if nombre is None:
-        return jsonify({"error": "Token inválido o ausente"}), 401
+        if uid is None:
+            return jsonify({"error": "Token inválido o ausente"}), 401
 
-    usuarios[nombre]["password_hash"] = hash_password(datos["password"])
-    guardar_usuarios(usuarios)
+        await conn.execute(
+            text("UPDATE Usuario SET password_hash = :password_hash WHERE id = :id"),
+            {"password_hash": hash_password(datos["password"]), "id": uid}
+        )
 
     return jsonify({"message": "Contraseña actualizada"}), 200
+
+
+@app.patch("/user/saldo")
+async def recargar_saldo():
+    datos = await request.get_json(silent=True)
+
+    if not isinstance(datos, dict) or not isinstance(datos.get("cantidad"), (int, float)) or datos["cantidad"] <= 0:
+        return jsonify({"error": "La cantidad debe ser un número positivo"}), 400
+
+    async with engine.begin() as conn:
+        uid = await usuario_del_token(conn, request.headers.get("Authorization"))
+
+        if uid is None:
+            return jsonify({"error": "Token inválido o ausente"}), 401
+
+        resultado = await conn.execute(
+            text("UPDATE Usuario SET saldo = saldo + :cantidad WHERE id = :id RETURNING saldo"),
+            {"cantidad": datos["cantidad"], "id": uid}
+        )
+        saldo = resultado.scalar()
+
+    return jsonify({"saldo": float(saldo)}), 200
+
+
+@app.delete("/user")
+async def delete_user():
+    async with engine.begin() as conn:
+        uid = await usuario_del_token(conn, request.headers.get("Authorization"))
+
+        if uid is None:
+            return jsonify({"error": "Token inválido o ausente"}), 401
+
+        # El procedimiento devuelve al stock lo que hubiera en su carrito y borra sus datos
+        await conn.execute(text("CALL borrar_usuario(:id)"), {"id": uid})
+
+    return jsonify({"message": "Usuario borrado"}), 200
 
 
 if __name__ == "__main__":

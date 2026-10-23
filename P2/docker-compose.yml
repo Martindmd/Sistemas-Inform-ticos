@@ -12,6 +12,10 @@ services:
 
     command: python3 user.py
 
+    # Dentro de Docker la base de datos se llama 'db' (nombre del servicio)
+    environment:
+      DATABASE_URL: postgresql+asyncpg://alumnodb:1234@db:5432/si1
+
     volumes:
       - ./:/app
 
@@ -28,6 +32,10 @@ services:
       - "5051:5051"
 
     command: python3 api.py
+
+    # Dentro de Docker la base de datos se llama 'db' (nombre del servicio)
+    environment:
+      DATABASE_URL: postgresql+asyncpg://alumnodb:1234@db:5432/si1
 
     volumes:
       - ./:/app
